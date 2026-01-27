@@ -15,7 +15,7 @@ Contact teaching team: comp0087@cs.ucl.ac.uk
 
 ## Group members:
 <ul>
-<li>Thomas Lofaro — thomas.lofaro.25@ucl.ac.uk 25187516</li>
+<li>Thomas Lofaro — thomas.lofaro.25@ucl.ac.uk | 25187516</li>
 <li>Ewan Burns — ewan.burns.24@ucl.ac.uk | 24215416</li>
 <li>TJ — tharrshann.logarajah.25@ucl.ac.uk | 22013899</li>
 <li>Stephanie Jat — stephanie.jat.25@ucl.ac.uk | 25000117</li>
