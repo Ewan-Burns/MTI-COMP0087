@@ -35,10 +35,15 @@ from get_prompts import get_n_prompts  # <-- change this import
 # -----------------------------
 # Config
 # -----------------------------
+# MODEL_REPO_ID = os.environ.get(
+#     "MODEL_REPO_ID",
+#     "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+# )
 MODEL_REPO_ID = os.environ.get(
     "MODEL_REPO_ID",
-    "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+    "mlx-community/TinyLlama-1.1B-Chat-v1.0-4bit",
 )
+
 LOCAL_MODEL_PATH = Path(
     os.environ.get("LOCAL_MLX_MODEL_PATH", f"./models/{MODEL_REPO_ID.split('/')[-1]}")
 ).expanduser()
@@ -73,15 +78,56 @@ GEN_CACHE_PATH = Path(os.environ.get("GEN_CACHE_PATH", "./gen_cache.json")).expa
 # -----------------------------
 # Utilities: ensure local MLX model
 # -----------------------------
+from pathlib import Path
+
+def find_mlx_model_dir(root: Path) -> Path | None:
+    """
+    Return a directory that contains config.json and at least one .safetensors file.
+    Searches root first, then recursively. If multiple candidates, pick the one
+    with the largest total safetensors size.
+    """
+    root = root.resolve()
+    candidates: list[Path] = []
+
+    def is_candidate(p: Path) -> bool:
+        if not p.is_dir():
+            return False
+        if not (p / "config.json").exists():
+            return False
+        # weights can be named many things; search just in this dir
+        return any(p.glob("*.safetensors"))
+
+    # 1) root itself
+    if is_candidate(root):
+        return root
+
+    # 2) search recursively for directories containing config.json
+    for cfg in root.rglob("config.json"):
+        d = cfg.parent
+        if is_candidate(d):
+            candidates.append(d)
+
+    if not candidates:
+        return None
+
+    # Pick the candidate with the largest sum of safetensors sizes (usually the real model)
+    def total_weight_bytes(d: Path) -> int:
+        return sum(f.stat().st_size for f in d.glob("*.safetensors"))
+
+    candidates.sort(key=total_weight_bytes, reverse=True)
+    return candidates[0]
+
+
 def has_local_model_files(model_path: Path) -> bool:
-    if not model_path.exists() or not model_path.is_dir():
-        return False
-    return (model_path / "config.json").exists() and any(model_path.glob("model*.safetensors"))
+    return find_mlx_model_dir(model_path) is not None
+
 
 def ensure_local_model(model_path: Path, repo_id: str) -> Path:
     model_path = model_path.resolve()
-    if has_local_model_files(model_path):
-        return model_path
+
+    found = find_mlx_model_dir(model_path)
+    if found is not None:
+        return found
 
     if not DOWNLOAD_IF_MISSING:
         raise FileNotFoundError(
@@ -97,7 +143,7 @@ def ensure_local_model(model_path: Path, repo_id: str) -> Path:
         local_dir=str(model_path),
         allow_patterns=[
             "*.json",
-            "model*.safetensors",
+            "*.safetensors",  # IMPORTANT
             "*.py",
             "tokenizer.model",
             "*.tiktoken",
@@ -109,9 +155,55 @@ def ensure_local_model(model_path: Path, repo_id: str) -> Path:
         token=HF_TOKEN,
     )
 
-    if not has_local_model_files(model_path):
-        raise RuntimeError(f"Download completed but required model files were not found in {model_path}")
-    return model_path.resolve()
+    found = find_mlx_model_dir(model_path)
+    if found is None:
+        raise RuntimeError(
+            "Download completed but required MLX model files were not found.\n"
+            f"Searched under: {model_path}\n"
+            "Expected to find a directory containing config.json and *.safetensors."
+        )
+
+#     return found
+# def has_local_model_files(model_path: Path) -> bool:
+#     if not model_path.exists() or not model_path.is_dir():
+#         return False
+#     return (model_path / "config.json").exists() and any(model_path.glob("model*.safetensors"))
+
+# def ensure_local_model(model_path: Path, repo_id: str) -> Path:
+#     model_path = model_path.resolve()
+#     if has_local_model_files(model_path):
+#         return model_path
+
+#     if not DOWNLOAD_IF_MISSING:
+#         raise FileNotFoundError(
+#             f"Local model not found at: {model_path}\n"
+#             "Enable DOWNLOAD_IF_MISSING=1 or set LOCAL_MLX_MODEL_PATH to an existing local model."
+#         )
+
+#     model_path.mkdir(parents=True, exist_ok=True)
+#     print(f"Local model not found. Downloading {repo_id} to {model_path} ...")
+
+#     snapshot_download(
+#         repo_id=repo_id,
+#         local_dir=str(model_path),
+#         allow_patterns=[
+#             "*.json",
+#             "model*.safetensors",
+#             "*.safetensors", 
+#             "*.py",
+#             "tokenizer.model",
+#             "*.tiktoken",
+#             "tiktoken.model",
+#             "*.txt",
+#             "*.jsonl",
+#             "*.jinja",
+#         ],
+#         token=HF_TOKEN,
+#     )
+
+#     if not has_local_model_files(model_path):
+#         raise RuntimeError(f"Download completed but required model files were not found in {model_path}")
+#     return model_path.resolve()
 
 
 def load_model_and_tokenizer(model_path: Path) -> Tuple[Any, Any]:
@@ -122,11 +214,11 @@ def load_model_and_tokenizer(model_path: Path) -> Tuple[Any, Any]:
 # -----------------------------
 # Logits processor: EXCLUDE_TOP_K
 # -----------------------------
-def make_exclude_top_k_processor(k: int) -> Callable[[mx.array, mx.array], mx.array]:
+def make_exclude_top_k_processor(k: int):
     """
-    Returns a logits processor for mlx_lm.generate.
-    For each step, find the top-k tokens by logit and set them to -inf so they can't be sampled.
-    Signature matches mlx_lm logits processors: (tokens, logits) -> logits
+    Logits processor for mlx_lm.generate that removes the current top-k tokens
+    by setting their logits to a very negative value.
+    Uses only ops that exist in older mlx.core versions (no mx.scatter).
     """
     k = int(max(1, k))
 
@@ -134,13 +226,19 @@ def make_exclude_top_k_processor(k: int) -> Callable[[mx.array, mx.array], mx.ar
         # logits: [vocab]
         vocab = int(logits.shape[-1])
         kk = min(k, vocab)
+
         # indices of top-k largest logits
         top_idx = mx.argpartition(-logits, kth=kk - 1, axis=-1)[:kk]
-        # Create a mask and scatter -inf
+
+        # build a boolean mask over vocab positions: True for tokens to exclude
+        positions = mx.arange(vocab)
+        # Compare each vocab position against each of the top_idx values
+        # result shape: [vocab, kk] -> reduce any -> [vocab]
+        exclude_mask = mx.any(positions[:, None] == top_idx[None, :], axis=1)
+
+        # replace excluded logits with a large negative value
         neg_inf = mx.array(-1e9, dtype=logits.dtype)
-        masked = logits
-        masked = mx.scatter(masked, top_idx, neg_inf)
-        return masked
+        return mx.where(exclude_mask, neg_inf, logits)
 
     return _proc
 
@@ -181,13 +279,13 @@ def build_regimes() -> List[Regime]:
     ex5 = Regime(
         name="EXCLUDE_TOP_K_5",
         sampler=make_sampler(temp=0.9, top_p=0.95),
-        logits_processors=make_exclude_top_k_processor(5),
+        logits_processors=[make_exclude_top_k_processor(5)],
         seed_base=SAMPLE_SEED,
     )
     ex10 = Regime(
         name="EXCLUDE_TOP_K_10",
         sampler=make_sampler(temp=0.9, top_p=0.95),
-        logits_processors=make_exclude_top_k_processor(10),
+        logits_processors=[make_exclude_top_k_processor(10)],
         seed_base=SAMPLE_SEED,
     )
     return [greedy, topk10, topk100, ex5, ex10]
@@ -320,7 +418,57 @@ def compute_metrics(eval_pred):
     except Exception:
         pass
     return out
+import inspect
+from transformers import TrainingArguments
 
+def make_training_args(output_dir: str, run_name: str, seed: int, learning_rate: float,
+                       weight_decay: float, warmup_ratio: float, num_train_epochs: float,
+                       per_device_train_batch_size: int, per_device_eval_batch_size: int,
+                       evaluation_strategy: str | None = "epoch",
+                       save_strategy: str | None = "no",
+                       logging_steps: int = 20,
+                       report_to: str | None = "none",
+                       fp16: bool = True) -> TrainingArguments:
+    """
+    Build TrainingArguments in a way that's compatible with the installed transformers.
+    Filters out keywords not accepted by the local TrainingArguments signature.
+    """
+    base_kwargs = dict(
+        output_dir=str(output_dir),
+        run_name=str(run_name),
+        seed=seed,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        warmup_ratio=warmup_ratio,
+        num_train_epochs=num_train_epochs,
+        per_device_train_batch_size=per_device_train_batch_size,
+        per_device_eval_batch_size=per_device_eval_batch_size,
+        evaluation_strategy=evaluation_strategy,
+        save_strategy=save_strategy,
+        logging_steps=logging_steps,
+        report_to=report_to,
+        fp16=fp16,
+    )
+
+    # Remove None values (we only pass configured options)
+    base_kwargs = {k: v for k, v in base_kwargs.items() if v is not None}
+
+    # Filter to only parameters supported by this version of TrainingArguments
+    sig = inspect.signature(TrainingArguments)
+    supported_params = set(sig.parameters.keys())
+    filtered_kwargs = {k: v for k, v in base_kwargs.items() if k in supported_params}
+
+    # For older transformers that don't have evaluation_strategy but do have
+    # `evaluate_during_training`/`do_eval` or similar, we could map them. Try a couple guesses:
+    if "evaluation_strategy" not in filtered_kwargs:
+        if "evaluate_during_training" in supported_params and evaluation_strategy is not None:
+            # map epoch -> True (best-effort)
+            filtered_kwargs["evaluate_during_training"] = evaluation_strategy in ("epoch", "always")
+        if "do_eval" in supported_params:
+            # keep eval on if user wanted epoch evaluation
+            filtered_kwargs["do_eval"] = evaluation_strategy is not None
+
+    return TrainingArguments(**filtered_kwargs)
 
 # -----------------------------
 # Train one RoBERTa model
@@ -338,9 +486,9 @@ def train_roberta_classifier(
     val_tok = tokenize_dataset(val_ds, tok) if val_ds is not None else None
 
     # Choose fp16 if CUDA is available (trainer handles it)
-    args = TrainingArguments(
-        output_dir=str(run_dir),
-        run_name=str(run_dir.name),
+    args = make_training_args(
+        output_dir=run_dir,
+        run_name=run_dir.name,
         seed=seed,
         learning_rate=LEARNING_RATE,
         weight_decay=WEIGHT_DECAY,
@@ -348,12 +496,11 @@ def train_roberta_classifier(
         num_train_epochs=EPOCHS,
         per_device_train_batch_size=TRAIN_BATCH_SIZE,
         per_device_eval_batch_size=EVAL_BATCH_SIZE,
-        evaluation_strategy="epoch" if val_tok is not None else "no",
-        save_strategy="no",  # saves time; change if you want checkpoints
-        logging_strategy="steps",
+        evaluation_strategy="epoch" if val_tok is not None else None,
+        save_strategy="no",
         logging_steps=20,
         report_to="none",
-        fp16=True,  # harmless if unsupported; trainer will handle on CPU
+        fp16=True,
     )
 
     trainer = Trainer(
@@ -361,7 +508,6 @@ def train_roberta_classifier(
         args=args,
         train_dataset=train_tok,
         eval_dataset=val_tok,
-        tokenizer=tok,
         compute_metrics=compute_metrics if val_tok is not None else None,
     )
 
