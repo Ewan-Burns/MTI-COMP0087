@@ -1,0 +1,121 @@
+# ===================
+# SECRETS - CRITICAL
+# ===================
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# ===================
+# Python
+# ===================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===================
+# Virtual Environments
+# ===================
+venv/
+env/
+ENV/
+.venv/
+.conda/
+
+# ===================
+# Model Files (large)
+# ===================
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.h5
+*.onnx
+*.ckpt
+models/
+cache/
+.cache/
+
+# ===================
+# Data Files (large)
+# ===================
+*.csv
+*.json
+!package.json
+*.parquet
+*.arrow
+*.feather
+data/
+datasets/
+
+# ===================
+# Experiment Outputs
+# ===================
+outputs/
+results/
+logs/
+runs/
+wandb/
+mlruns/
+checkpoints/
+
+# ===================
+# Jupyter Notebooks
+# ===================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ===================
+# IDE / Editor
+# ===================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# ===================
+# OS Files
+# ===================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===================
+# Testing
+# ===================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ===================
+# Misc
+# ===================
+*.log
+*.tmp
+*.temp
+.mypy_cache/
