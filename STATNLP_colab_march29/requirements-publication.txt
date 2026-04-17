@@ -1,0 +1,15 @@
+# Publication benchmark dependencies (for Colab / pip environments)
+# Mirrors environment-publication.yml
+numpy==1.26.4
+scikit-learn
+matplotlib
+tqdm
+torch
+torchvision
+transformers==4.57.6
+datasets
+huggingface-hub==0.36.2
+accelerate
+sentencepiece
+bert-score==0.3.13
+mbrs==0.1.8
