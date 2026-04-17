@@ -1,17 +1,7 @@
-# ==========================================================================
-# Detection Scoring — builds and evaluates the transfer matrix.
-#
-# The transfer matrix has two flavours:
-#   - Supervised: rows = train source method, columns = test target method,
-#     cells = accuracy (or AUROC) of a fine-tuned classifier.
-#   - Unsupervised / HF pipeline ("score-only"): no training row — detectors
-#     are zero-shot or pre-trained; threshold is calibrated on held-out human
-#     texts to hit a target FPR, then accuracy is measured at that threshold.
-#
-# Key metric: accuracy @ calibrated FPR (e.g. 5%).  We pick the decision
-# threshold on validation human texts so the false-positive rate ≈ target,
-# then report the resulting accuracy on the test set.
-# ==========================================================================
+'''
+ Detection Scoring — builds and evaluates the transfer matrix.
+ accuracy @ calibrated FPR (e.g. 5%).
+'''
 
 from __future__ import annotations
 
@@ -42,12 +32,9 @@ from ._detection_data import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Metric helpers (merged from _detection_metrics.py)
-# ---------------------------------------------------------------------------
 
 
-# Replace NaN/Inf scores with a neutral fallback to prevent metric computation failures.
+# Clean scores
 def _sanitize_scores(scores: list[float], fallback: float = 0.5) -> list[float]:
     result = []
     for score in scores:
@@ -69,7 +56,6 @@ def _accuracy_fpr_tpr(labels: list[int], scores: list[float], *, threshold: floa
 
 
 # Calibrate a decision threshold so that the FPR on human-only scores ≈ target_fpr.
-# Returns (threshold, actual_fpr). Used by both HF and unsupervised detector paths.
 def _threshold_for_target_fpr(human_scores: list[float], *, target_fpr: float) -> tuple[float, float]:
     sanitized = _sanitize_scores(human_scores)
     if not sanitized:
@@ -97,10 +83,7 @@ def _mean_ai_probability(scores: list[float], num_human_texts: int) -> float:
     return float(sum(ai_scores) / len(ai_scores)) if ai_scores else 0.0
 
 
-# ---------------------------------------------------------------------------
 # Scoring / evaluation
-# ---------------------------------------------------------------------------
-
 
 def _cell_result_to_dict(result: MatrixCellResult) -> dict[str, Any]:
     return {
@@ -148,7 +131,6 @@ def _evaluate_score_only_detector(
 
 
 # Collect human-authored texts for threshold calibration.
-# Prefers validation split; falls back to a 10% slice of training data.
 def _calibration_human_texts(prompt_manifest: DatasetManifest) -> list[str]:
     records = [r for r in load_prompt_records(prompt_manifest) if r.reference_text]
     validation_texts = [r.reference_text for r in records if r.split == "validation"]
@@ -161,9 +143,6 @@ def _calibration_human_texts(prompt_manifest: DatasetManifest) -> list[str]:
 
 
 def _default_unsupervised_model_pairs(quick_config: QuickRunConfig) -> dict[str, dict[str, str]]:
-    # Dubois et al. use the base model as main (q) and its instruct variant as aux (r).
-    # If the generation model is already an instruct model, strip "-Instruct" to get base.
-    # If it's a base model, append "-Instruct" to get the aux.
     gen_model = quick_config.model.publication_model_id
     if "-Instruct" in gen_model:
         main_model = gen_model.replace("-Instruct", "")
@@ -405,8 +384,6 @@ def _run_unsupervised_matrix(
     return results
 
 
-# Orchestrate the full evaluation: build supervised + score-only matrices,
-# persist results as JSON/CSV, and render heatmap plots.
 def run_detection_matrix(
     prompt_manifest: DatasetManifest,
     generation_paths: dict[str, Path],
@@ -523,8 +500,7 @@ def run_detection_matrix(
     return {"supervised": results_supervised, "score_only": results_score_only}
 
 
-# Test detector robustness: swap in out-of-distribution human texts (different
-# domain/style) as the negative class to see if detectors over-fit to training domain.
+# Test detector robustness
 def evaluate_human_domain_shift(
     *,
     shift_manifest: DatasetManifest,

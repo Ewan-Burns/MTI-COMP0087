@@ -1,7 +1,4 @@
-# Supervised (fine-tuned) detector: loads a trained sequence-classification
-# checkpoint and scores texts by P(AI | text). At prediction time, applies a
-# calibrated decision threshold (stored in training_metrics.json alongside the
-# checkpoint) to convert continuous scores into binary labels.
+
 
 from __future__ import annotations
 
@@ -24,7 +21,6 @@ from ._supervised_common import (
     select_decision_threshold,
 )
 
-# Backward-compat aliases: external code (tests, training) imports underscore-prefixed names.
 _sanitize_scores = sanitize_scores
 _select_decision_threshold = select_decision_threshold
 _model_load_kwargs = model_load_kwargs
@@ -151,14 +147,9 @@ def predict_supervised_detector_texts(**kwargs: Any) -> list[int]:
     return [1 if s >= threshold else 0 for s in score_supervised_detector_texts(**kwargs)]
 
 
-# Re-export for backward compatibility. The implementation lives in
-# statnlp_bench.training.train_supervised to keep training logic separate.
 from ..training.train_supervised import train_supervised_detector  # noqa: E402, F401
 
-# ---------------------------------------------------------------------------
 # Register two supervised detector variants (RoBERTa and mDeBERTa).
-# Both use the same scoring/prediction logic; they differ only in base architecture.
-# ---------------------------------------------------------------------------
 register_detector(
     DetectorSpec(
         name="tuned-roberta-base",

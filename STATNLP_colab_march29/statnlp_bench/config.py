@@ -1,6 +1,6 @@
 # Configuration dataclasses for the statnlp benchmark pipeline.
-# Every setting can be overridden via environment variables — the env_* helpers
-# below implement a consistent "env var wins, else use default" pattern.
+# Every setting can be overridden via environment variables 
+
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# ---- Environment-variable helpers ----
+# Environment-variable helpers
 # Each returns the parsed env value if set, otherwise the provided default.
 
 def env_bool(name: str, default: bool) -> bool:
@@ -65,7 +65,7 @@ def hf_token_from_env() -> str | None:
     )
 
 
-# ---- Artifact paths ----
+# Artifact paths 
 # Standardised directory layout for all pipeline outputs (datasets, generated
 # text, evaluation results, plots). Everything lives under a single root.
 
@@ -91,8 +91,7 @@ def build_artifact_paths(root: str | Path = "artifacts") -> ArtifactPaths:
     )
 
 
-# ---- Model settings ----
-# Generation model (Torch-backed) for reproducible paper results.
+#Model settings
 
 @dataclass(slots=True)
 class ModelSettings:
@@ -106,7 +105,7 @@ class ModelSettings:
     publication_negative_prompt: str = ""
 
 
-# ---- Quick-run config ----
+# Quick-run config 
 # End-to-end settings for a single generation+detection run (model, decoding,
 # detector params, human baseline). All fields overridable via from_env().
 
@@ -162,7 +161,7 @@ class QuickRunConfig:
         )
 
 
-# ---- Generative-detection track config ----
+# Generative-detection track config
 # Controls the full generate-then-detect pipeline: which prompts to use,
 # how to split data, which generation methods to evaluate, and at what FPR
 # threshold to report detection results.
@@ -190,7 +189,7 @@ class GenerativeDetectionConfig:
     publication_mode: bool = False  # stricter settings for paper-reproducible runs
 
 
-# ---- Supervised detector training config ----
+# Supervised detector training config
 # Hyperparameters for fine-tuning classifier heads (e.g. RoBERTa, mDeBERTa)
 # on top of the generated/human text to build supervised AI-text detectors.
 
@@ -218,31 +217,6 @@ class SupervisedTrainingConfig:
     )
 
 
-# ---- Task-efficiency track config ----
-# Settings for the NLU benchmark track: evaluates early-exit and efficiency
-# methods (FULL_PASS, RAEE, etc.) across standard classification datasets.
-
-@dataclass(slots=True)
-class TaskTrackConfig:
-    artifacts: ArtifactPaths = field(default_factory=build_artifact_paths)
-    datasets: list[str] = field(
-        default_factory=lambda: ["SST2", "MNLI", "BoolQ", "AGNews"]
-    )
-    methods: list[str] = field(default_factory=lambda: ["FULL_PASS", "RAEE"])
-    batch_size: int = 8
-    seed: int = 42
-    device: str = "auto"
-    max_train_items: int | None = None  # cap for faster dev iterations
-    max_eval_items: int | None = None
-    # Each dataset uses a different pre-finetuned checkpoint
-    model_name_by_dataset: dict[str, str] = field(
-        default_factory=lambda: {
-            "SST2": "distilbert-base-uncased-finetuned-sst-2-english",
-            "MNLI": "FacebookAI/roberta-large-mnli",
-            "BoolQ": "lewtun/bert-base-uncased-finetuned-boolq",
-            "AGNews": "fabriceyhc/bert-base-uncased-ag_news",
-        }
-    )
 
 
 # Recursively serialise nested dataclasses to plain dicts (for JSON export).

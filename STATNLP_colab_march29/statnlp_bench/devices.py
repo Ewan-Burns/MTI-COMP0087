@@ -1,5 +1,4 @@
-# Resolve a user-supplied device string (e.g. "auto", "gpu", "cpu")
-# into a concrete PyTorch device name. Preference order: CUDA > CPU.
+
 
 from __future__ import annotations
 

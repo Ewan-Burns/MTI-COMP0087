@@ -52,11 +52,7 @@ def load_model_pair(
     model_r.eval()
     return tokenizer_q, model_q, model_r
 
-
-# ---------------------------------------------------------------------------
-# Shared batch-scoring loop: tokenize, run both models, then delegate to
-# `compute_scores` for the detector-specific metric (Binoculars or FastDetectGPT).
-# ---------------------------------------------------------------------------
+# Shared batch-scoring loop
 def score_with_model_pair(
     texts: list[str],
     *,

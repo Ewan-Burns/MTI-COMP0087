@@ -1,9 +1,4 @@
 # Local-first Hugging Face caching layer.
-#
-# Strategy: every load (model, tokenizer, dataset) first tries local_files_only=True
-# to avoid network calls when the artifact is already cached. Only if that fails
-# (and offline mode is not set) does it fall back to downloading. This makes
-# repeated runs fast and allows fully offline execution.
 
 from __future__ import annotations
 
@@ -85,7 +80,7 @@ def _merge_token(kwargs: dict[str, Any], token: str | None) -> dict[str, Any]:
 
 
 # Wrapper around from_pretrained that handles API differences across
-# transformers versions (token vs use_auth_token, fix_mistral_regex support).
+# transformers versions
 def _call_from_pretrained(
     loader: Any, model_name_or_path: str | Path, *, token: str | None, **kwargs: Any,
 ) -> Any:

@@ -1,10 +1,6 @@
 # Binoculars detector (Hans et al., 2024): "Spotting LLM-Generated Text with a Glance"
 # https://arxiv.org/abs/2401.12070
-#
-# Core idea: compare how two LMs (observer & performer) score the same text.
-# Human text shows a high cross-entropy ratio; LLM-generated text does not.
-# Score = mean_NLL(observer) / mean_cross_entropy(observer, performer)
-# Lower scores → more likely AI-generated.
+
 
 from __future__ import annotations
 

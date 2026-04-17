@@ -1,8 +1,5 @@
 # Preflight checks that verify required ML libraries are importable before
-# running a track. Each check spawns a subprocess so an import crash (e.g. bad
-# native lib) doesn't kill the main process. Failure messages include concrete
-# fix instructions so users don't have to guess at missing dependencies.
-
+# running a track. 
 from __future__ import annotations
 
 import platform

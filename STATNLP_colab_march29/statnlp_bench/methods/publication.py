@@ -1,11 +1,7 @@
-# --------------------------------------------------------------------------- #
-# publication.py — PyTorch/Transformers-backend decoding methods
-#
-# Implements the full set of sampling strategies from Dubois et al. (2025)
+
+# Implements the full set of sampling strategies from Dubois
 # plus novel methods (contrastive search, CFG, Top-H, MBR).
-# Uses HuggingFace transformers.generate() for generation; models are
-# loaded lazily so torch is never imported at module level.
-# --------------------------------------------------------------------------- #
+
 from __future__ import annotations
 
 import hashlib
@@ -15,6 +11,7 @@ import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+import torch
 
 from ..config import QuickRunConfig
 from ..devices import resolve_torch_device
@@ -25,7 +22,7 @@ from .profiles import DUBOIS_FULL, NOVEL_CORE, publication_lane_for_method
 
 # Shared base: ancestral sampling at temp=1.0. All Dubois methods spread-merge
 # from this dict, overriding only the parameter under test.
-# Dubois et al. retry generation if continuation is < 50 tokens
+
 MIN_CONTINUATION_TOKENS = 50
 
 # top_k=0 disables top-k filtering (HF default is 50, which would silently truncate)
@@ -139,9 +136,9 @@ _TORCH_DTYPE_MAP = {
 }
 
 
-# --------------------------------------------------------------------------- #
+
 # Custom logits processors for novel sampling methods
-# --------------------------------------------------------------------------- #
+
 
 def _make_p_less_processor():
     """P-less sampling: mask tokens with probability below sum_i(p_i^2).
@@ -150,7 +147,7 @@ def _make_p_less_processor():
     distributions get a higher threshold (more aggressive masking),
     flat distributions get a lower one.
     """
-    import torch
+    
 
     class PLessProcessor:
         def __call__(self, input_ids, scores):
@@ -169,7 +166,6 @@ def _make_top_h_processor(alpha: float):
 
     Lower alpha = stricter (fewer tokens kept), higher alpha = more diverse.
     """
-    import torch
 
     class TopHProcessor:
         def __call__(self, input_ids, scores):
@@ -181,10 +177,7 @@ def _make_top_h_processor(alpha: float):
 
             sorted_probs, sorted_indices = probs.sort(dim=-1, descending=True)
 
-            # Cumulative quantities for running entropy computation:
-            #   Gamma_j = sum_{i<=j} p_i
-            #   h_j = sum_{i<=j} p_i * log(p_i)
-            #   H(q_j) = log(Gamma_j) - h_j / Gamma_j
+            # Cumulative quantities for running entropy computation
             cumsum = sorted_probs.cumsum(dim=-1)
             cum_plogp = (sorted_probs * sorted_probs.clamp(min=1e-12).log()).cumsum(dim=-1)
             Hq = cumsum.clamp(min=1e-12).log() - cum_plogp / cumsum.clamp(min=1e-12)
@@ -265,6 +258,7 @@ def _load_publication_model_cached(
         model_kwargs["attn_implementation"] = attn_implementation
 
     model = from_pretrained_local_first(AutoModelForCausalLM, model_id, **model_kwargs)
+
     # Many causal LMs ship without a pad token; reuse EOS to avoid errors
     if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token_id", None) is not None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -287,10 +281,7 @@ def _load_model(config: QuickRunConfig) -> tuple[Any, Any, Any, str]:
     return torch, tokenizer, model, device
 
 
-# --------------------------------------------------------------------------- #
-# Seed determinism: unique seed per (prompt, run) for reproducibility
-# --------------------------------------------------------------------------- #
-
+# Seed determinism: unique seed per (prompt, run) 
 def _prompt_seed(config: QuickRunConfig, prompt_idx: int, run_idx: int) -> int:
     return int(config.sample_seed + ((prompt_idx - 1) * config.prompt_seed_stride) + run_idx)
 
@@ -379,6 +370,9 @@ def _run_single_prompt(
     model,
     device: str,
 ) -> tuple[str, dict[str, Any]]:
+    '''
+    Runs a single prompt according to a sampling method
+    '''
     seed = _prompt_seed(config, prompt_idx, run_idx)
     _set_torch_seed(torch_mod, seed)
 
@@ -393,7 +387,7 @@ def _run_single_prompt(
     generate_args: dict[str, Any] = {**encoded, "generation_config": gen_config}
     generate_args.update(_custom_generate_kwargs(mode))
 
-    # Inject custom logits processors (P-less, Top-H, etc.)
+    # Inject custom logits processors for stuff like (P-less, Top-H, etc.)
     processors = _build_logits_processors(method_name)
     if processors:
         from transformers import LogitsProcessorList
@@ -419,10 +413,8 @@ def _run_single_prompt(
     return text, {"seed": seed, "input_length": input_length}
 
 
-# --------------------------------------------------------------------------- #
 # Batched generation: left-padding is required for causal LMs so that all
 # sequences in the batch share a common right-aligned generation position.
-# --------------------------------------------------------------------------- #
 def _run_batched_sample(
     prompts: list[str],
     method_name: str,
@@ -435,6 +427,7 @@ def _run_batched_sample(
     model,
     device: str,
 ) -> tuple[list[str], list[dict[str, Any]]]:
+    
     seed = _prompt_seed(config, prompt_start_idx, run_idx)
     _set_torch_seed(torch_mod, seed)
 
@@ -485,7 +478,7 @@ def _run_batched_sample(
         if len(generated_tokens) < MIN_CONTINUATION_TOKENS:
             short_indices.append(i)
 
-    # Retry short outputs individually (matches Dubois et al.)
+    # Retry short outputs individually (like DUbois)
     for i in short_indices:
         text, metadata = _run_single_prompt(
             prompts[i], method_name, method_kwargs,
@@ -518,6 +511,9 @@ def _load_mbr_decoder(metric_model: str, device: str) -> tuple[Any, Any]:
 def _mbr_select_candidate(
     candidates: list[str], *, metric_model: str, device: str,
 ) -> tuple[str, dict[str, Any]]:
+    """
+    Selects candidate for MBR
+    """
     if not candidates:
         return "", {"selected_index": 0, "utilities": []}
     metric, decoder = _load_mbr_decoder(metric_model, device)
@@ -540,6 +536,9 @@ def _run_mbr_generation(
     run_idx: int,
     config: QuickRunConfig,
 ) -> MethodRunResult:
+    """
+    Runs MBR
+    """
     torch_mod, tokenizer, model, device = _load_model(config)
     method_kwargs = MBR_METHODS[method_name]
     num_candidates = method_kwargs["num_candidates"]
@@ -609,6 +608,9 @@ def run_publication_generation_method(
     run_idx: int = 0,
     **_: Any,
 ) -> MethodRunResult:
+    """
+    Main method where generation occurrs, loads every type and acts accordingly
+    """
     if method_name in MBR_METHODS:
         return _run_mbr_generation(
             prompts, method_name, prompt_start_idx, run_idx, config,
@@ -711,7 +713,7 @@ def publication_metadata_for_method(
     return metadata
 
 
-# Register all publication methods at import time so the runner can discover them
+# Register all publication methods at import time
 def _register_publication_methods() -> None:
     for method_name in available_publication_method_names():
         register_method(

@@ -93,10 +93,7 @@ def infer_detector_label_sets(model: Any) -> tuple[set[int], set[int]]:
     return ai_ids, human_ids
 
 
-# Extract P(AI) from the softmax output. Fallback cascade:
-# 1. Use AI label indices directly if known
-# 2. Else use 1 - P(human) if human labels known
-# 3. Else assume binary with AI = index 1
+# Extract P(AI) from the softmax output
 def _ai_probability(probs: list[float], ai_ids: set[int], human_ids: set[int]) -> float:
     if ai_ids:
         return max(probs[i] for i in ai_ids if i < len(probs))
@@ -107,7 +104,7 @@ def _ai_probability(probs: list[float], ai_ids: set[int], human_ids: set[int]) -
     return max(probs)
 
 
-# Some tokenizers report absurd max_length values (e.g. 1e30); treat those as unset.
+# Cleaning received values
 def _resolve_max_length(tokenizer: Any) -> int | None:
     max_length = getattr(tokenizer, "model_max_length", None)
     try:
@@ -172,7 +169,7 @@ def score_hf_detector_texts(
     ai_ids, human_ids = infer_detector_label_sets(model)
     max_length = _resolve_max_length(tokenizer)
 
-    # --- Batch scoring loop ---
+    #Batch scoring loop
     scores: list[float] = []
     detector_name = Path(model_ref).name if Path(model_ref).exists() else model_id_or_path
     batch_size = max(1, batch_size)

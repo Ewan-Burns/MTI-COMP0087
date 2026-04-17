@@ -1,22 +1,8 @@
-# ==========================================================================
+
 # Supervised fine-tuning for binary AI-text detectors.
-#
-# Flow:
-#   1. Check for a reusable checkpoint (same model, hyperparams, data size)
-#   2. Load a pre-trained sequence classifier + tokenizer
-#   3. Tokenize train/validation splits → HF Datasets
-#   4. Fine-tune with HuggingFace Trainer (best-model selection on val accuracy)
-#   5. Calibrate the decision threshold on validation data so FPR ≈ target_fpr
-#   6. Save model, tokenizer, and training_metrics.json (includes threshold)
-#
-# Checkpoint reuse: if output_dir already contains a valid checkpoint whose
-# training_metrics.json matches the current config exactly (model, epochs, lr,
-# data size, etc.), training is skipped entirely. This makes re-runs cheap.
-#
-# Threshold calibration: after training, we score validation examples and pick
-# the threshold where the false-positive rate on human texts ≈ target_fpr.
-# This threshold is persisted and used at evaluation time.
-# ==========================================================================
+# Checks reasonable checkpoint, find classifier and tokeniser
+# Tokenise outputs, fine-tune, calibrate, then save model
+
 
 from __future__ import annotations
 
@@ -155,7 +141,7 @@ def _apply_version_specific_args(
         kwargs["save_only_model"] = True
     if "save_total_limit" in params:
         kwargs["save_total_limit"] = 1
-    # No evaluation during training — matches Dubois et al. (always use final model)
+    # No evaluation during training — matches Dubois (always use final model)
     if "evaluation_strategy" in params:
         kwargs["evaluation_strategy"] = "no"
     elif "eval_strategy" in params:

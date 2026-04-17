@@ -1,14 +1,6 @@
-# --------------------------------------------------------------------------- #
-# profiles.py — Named subsets ("profiles") of decoding methods
-#
-# A profile is a curated list of method names that can be selected as a group
-# (e.g. "dubois_full" runs all 36 Dubois sampling strategies). Profiles let
-# the CLI and experiment configs reference a bundle instead of listing methods
-# individually. Each method name must match a key in generative.py or
-# publication.py's method registries.
-#
-# "Lanes" control where results appear: main paper vs. appendix vs. experimental.
-# --------------------------------------------------------------------------- #
+"""
+Types of profiles for different running settings
+"""
 from __future__ import annotations
 
 from typing import Final
@@ -73,7 +65,7 @@ DUBOIS_FULL: Final[list[str]] = [
     "ETA_10",
 ]
 
-# Methods not in the original Dubois set — our novel contributions
+# Methods not in the original Dubois set -  our novel contributions
 NOVEL_CORE: Final[list[str]] = [
     "CONTRASTIVE_K8_A06",
     "CFG_20",

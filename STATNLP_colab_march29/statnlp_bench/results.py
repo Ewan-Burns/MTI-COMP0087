@@ -9,11 +9,7 @@ from typing import Iterable
 
 from .types import MatrixCellResult
 
-
-# ---------------------------------------------------------------------------
 # IO helpers
-# ---------------------------------------------------------------------------
-
 
 def _ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,9 +52,8 @@ def write_csv(path: str | Path, rows: Iterable[dict], fieldnames: list[str] | No
             writer.writerow(row)
 
 
-# ---------------------------------------------------------------------------
+
 # Heatmap visualisation
-# ---------------------------------------------------------------------------
 
 
 # Render the train-method x test-method matrix as a heatmap image.
@@ -104,10 +99,8 @@ def save_heatmap(
     return output
 
 
-# ---------------------------------------------------------------------------
-# Table rendering
-# ---------------------------------------------------------------------------
 
+# Table rendering
 
 # Flatten MatrixCellResults into plain dicts suitable for CSV/JSONL export.
 def matrix_rows(results: list[MatrixCellResult], value_field: str = "accuracy") -> list[dict[str, object]]:

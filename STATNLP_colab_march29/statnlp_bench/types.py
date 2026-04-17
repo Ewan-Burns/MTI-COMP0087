@@ -1,4 +1,4 @@
-# Core domain types for the statnlp benchmark pipeline.
+# Core domain types for the benchmark pipeline.
 # These dataclasses flow through the pipeline: prompts go in, generated texts
 # come out, detectors score them, and results land in MatrixCellResult tables.
 
@@ -11,7 +11,7 @@ from typing import Any, Callable, Literal
 # The two benchmark tracks that share this type system
 TrackName = Literal["generative_detection", "task_efficiency"]
 
-# ---- Data records (serialised to JSONL between pipeline stages) ----
+# Data records (serialised to JSONL between pipeline stages)
 
 @dataclass(slots=True)
 class PromptRecord:
@@ -64,7 +64,7 @@ class MatrixCellResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-# ---- Task-efficiency track records ----
+#Task-efficiency track records
 
 @dataclass(slots=True)
 class TaskExample:
@@ -101,10 +101,7 @@ class TaskRunResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-# ---- Registry specs ----
-# These "spec" types describe *capabilities* registered with the plugin system.
-# They pair a name with callable entry points so the pipeline can discover and
-# invoke methods, detectors, and datasets dynamically.
+# Registry specs
 
 @dataclass(slots=True)
 class DatasetManifest:
@@ -125,19 +122,19 @@ class TrainedDetectorRef:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-# A pluggable generation/inference method (e.g. greedy, beam, MBR, RAEE).
+# A pluggable generation/inference method
 @dataclass(slots=True)
 class MethodSpec:
     name: str
     track: TrackName | list[TrackName]
     family: str
     supports_answer_voting: bool
-    supports_dataset: Callable[[str], bool]  # predicate: can this method handle a given dataset?
+    supports_dataset: Callable[[str], bool]
     run: Callable[..., MethodRunResult]
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-# A pluggable AI-text detector. Some need training (supervised); others are zero-shot.
+
 @dataclass(slots=True)
 class DetectorSpec:
     name: str

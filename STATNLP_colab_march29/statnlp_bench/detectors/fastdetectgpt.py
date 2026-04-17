@@ -1,11 +1,7 @@
 # FastDetectGPT (Bao et al., 2023): "Fast-DetectGPT: Efficient Zero-Shot Detection
 # of Machine-Generated Text via Conditional Probability Curvature"
 # https://arxiv.org/abs/2310.05130
-#
-# Measures whether actual token log-probs deviate from what the reference model
-# expects. Uses conditional probability curvature (analytic discrepancy):
-#   z = (sum log_p(x_t) - sum E_ref[log_p]) / sqrt(sum Var_ref[log_p])
-# Higher scores → text is more likely AI-generated (matches Dubois / Bao convention).
+
 
 from __future__ import annotations
 
@@ -22,10 +18,7 @@ def _fastdetectgpt_scores(
     labels: torch.Tensor,
     mask: torch.Tensor,
 ) -> torch.Tensor:
-    # Matches Dubois et al. / Bao et al. analytic discrepancy:
-    #   z = (sum_t log_p(x_t) - sum_t E_ref[log_p]) / sqrt(sum_t Var_ref[log_p])
-    # Uses log-probs directly (not neglog) so higher z = more AI-like.
-    # Downstream score_multiplier is +1.0 (higher = AI, no flip needed).
+    # Matches Dubois et al. / Bao et al
     actual_logprob = torch.gather(log_probs_q, dim=-1, index=labels.unsqueeze(-1)).squeeze(-1)
     expected_logprob = (probs_r * log_probs_q).sum(dim=-1)
     variance = ((probs_r * log_probs_q**2).sum(dim=-1) - expected_logprob**2).clamp(min=1e-8)

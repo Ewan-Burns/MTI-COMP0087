@@ -1,6 +1,4 @@
-# Thin wrapper around tqdm that degrades gracefully when tqdm is missing
-# or progress bars are disabled via STATNLP_PROGRESS=0. All pipeline code
-# should use these helpers instead of importing tqdm directly.
+
 
 from __future__ import annotations
 

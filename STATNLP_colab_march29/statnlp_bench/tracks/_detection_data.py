@@ -1,15 +1,6 @@
-# ==========================================================================
+'''
 # Detection data loading utilities.
-#
-# Two record types flow through the detection pipeline:
-#   - PromptRecord: a prompt + human reference text + train/val/test split
-#     (stored as prompts.jsonl under each dataset directory)
-#   - GenerationRecord: an AI-generated text for a given prompt + method
-#     (stored as {method_name}.jsonl under the generations directory)
-#
-# Both are LRU-cached (keyed by resolved file path) to avoid redundant I/O
-# when the same dataset is accessed across multiple pipeline stages.
-# ==========================================================================
+'''
 
 from __future__ import annotations
 

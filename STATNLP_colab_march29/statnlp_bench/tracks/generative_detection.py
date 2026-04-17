@@ -1,15 +1,4 @@
-# ==========================================================================
-# Generative Detection Track — 4-stage pipeline:
-#   1. Data prep:   prepare prompt datasets (local MT-Bench + optional external)
-#   2. Generation:  run each generation method to produce AI texts per prompt
-#   3. Training:    train supervised detectors on (human, AI) text pairs
-#   4. Evaluation:  build a transfer matrix — every detector × every method
-#
-# The "transfer matrix" is the core evaluation artifact: rows = training
-# source (which method's AI text the detector was trained on), columns =
-# test target (which method's AI text is being detected). This reveals how
-# well detectors generalise across generation methods.
-# ==========================================================================
+# Builds the transfer matrices
 
 from __future__ import annotations
 
@@ -78,8 +67,7 @@ from ._detection_scoring import (
 )
 
 
-# Resolve which generation methods to run, with a priority cascade:
-# explicit list > config.methods > named profile > publication defaults > built-in defaults.
+# Resolve which generation methods to run
 def _resolved_method_names(config: GenerativeDetectionConfig, explicit_methods: list[str] | None = None) -> list[str]:
     raw = (
         explicit_methods
@@ -91,8 +79,7 @@ def _resolved_method_names(config: GenerativeDetectionConfig, explicit_methods: 
     return list(raw)
 
 
-# Combine multiple prompt sources (e.g. local MT-Bench + external RAID) into one dataset.
-# Prompt IDs are namespaced as "{manifest_name}:{original_id}" to avoid collisions.
+# Combine multiple prompt sources
 def _merge_prompt_manifests(
     manifests: list[DatasetManifest],
     *,
@@ -133,8 +120,7 @@ def _merge_prompt_manifests(
     )
 
 
-# --- Stage 1: Data Preparation ---
-# Builds the prompt dataset. If external data is enabled, merges local + external sources.
+# Builds the prompt dataset
 def prepare_prompt_dataset(
     config: GenerativeDetectionConfig,
     *,
@@ -200,9 +186,8 @@ def _run_generation_batch(
     )
 
 
-# --- Stage 2: Generation ---
-# For each method, generate AI text for every prompt and cache to disk as JSONL.
-# Cached outputs are reused if the method manifest (model, config hash, etc.) matches.
+# For each method, generate AI text for every prompt
+# Cached outputs are reused
 def build_generation_cache(
     prompt_manifest: DatasetManifest,
     *,
@@ -233,8 +218,6 @@ def build_generation_cache(
 
     base_batch_size = max(1, int(quick_config.generation_batch_size))
 
-    # Contrastive stores hidden states per token; CFG runs 2x forward passes.
-    # Both need reduced batch sizes to avoid OOM.
     # Reduced batch sizes for memory-heavy methods:
     #   contrastive: stores hidden states for similarity — ~8x more memory
     #   cfg: 2x forward passes per step — ~4x more memory
@@ -350,9 +333,7 @@ def _human_row_for_prompt(record: PromptRecord, *, copy_idx: int, split: str) ->
     }
 
 
-# Build a balanced detection corpus: for each prompt, pair the human reference text
-# (label=0) with AI-generated text (label=1). When source_methods=["mixture"], all
-# available methods contribute AI texts — each prompt gets one human copy per method.
+#pair the human reference text with AI-generated text
 def build_detection_corpus(
     prompt_manifest: DatasetManifest,
     generation_paths: dict[str, Path],
@@ -438,7 +419,6 @@ def _split_detection_examples(examples: list[DetectionExample]) -> tuple[list[De
 
 
 # If no validation split exists, carve a small hold-out from training data
-# (stratified by label) so we can calibrate the decision threshold.
 def _ensure_validation_examples(
     train_examples: list[DetectionExample],
     validation_examples: list[DetectionExample],
@@ -457,9 +437,7 @@ def _ensure_validation_examples(
     return train, validation
 
 
-# --- Stage 3: Training ---
-# Train one detector per (architecture × source method), plus a "mixture" detector
-# trained on all methods combined. This populates the rows of the transfer matrix.
+# Train one detector per (architecture × source method), plus a "mixture" detector trained on all methods combined
 def train_supervised_detectors(
     prompt_manifest: DatasetManifest,
     generation_paths: dict[str, Path],
@@ -506,85 +484,6 @@ def train_supervised_detectors(
             source_progress.update(1)
     return trained
 
-
-# Lightweight interactive experiment: generate + score a handful of prompts.
-# Not part of the full pipeline — useful for quick sanity checks.
-def run_quick_experiment(
-    *,
-    prompts: list[str],
-    methods: list[str] | None = None,
-    detector_ids: list[str] | None = None,
-    quick_config: QuickRunConfig | None = None,
-    print_generated_text: bool | None = None,
-) -> dict[str, Any]:
-    methods = methods or list(resolve_method_profile("publication_core"))
-    detector_ids = detector_ids or DEFAULT_HF_DETECTOR_IDS
-    quick_config = quick_config or QuickRunConfig.from_env()
-    if print_generated_text is None:
-        print_generated_text = quick_config.print_generated_text
-
-    outputs_by_method: dict[str, list[str]] = {}
-    detector_summary: dict[str, dict[str, list[float]]] = {d: {} for d in detector_ids}
-    batch_size = max(1, int(quick_config.generation_batch_size))
-
-    print(f"Prompts configured: {len(prompts)}")
-    print(f"Methods configured: {', '.join(methods)}")
-    print(f"Detectors configured: {', '.join(detector_ids)}")
-
-    for method_name in progress_iter(methods, desc="Quick methods", total=len(methods), unit="method", leave=True):
-        method_spec = get_method(method_name)
-
-        method_outputs: list[str] = []
-        total_batches = (len(prompts) + batch_size - 1) // batch_size
-        for batch_start in progress_iter(
-            range(0, len(prompts), batch_size),
-            desc=f"Generate {method_name}",
-            total=total_batches,
-            unit="batch",
-            leave=False,
-        ):
-            batch = prompts[batch_start : batch_start + batch_size]
-            result = method_spec.run(prompts=batch, method_name=method_name, prompt_start_idx=batch_start + 1, run_idx=0, config=quick_config)
-            method_outputs.extend(result.texts)
-        outputs_by_method[method_name] = method_outputs
-
-        for detector_id in progress_iter(detector_ids, desc=f"Detectors for {method_name}", total=len(detector_ids), unit="detector", leave=False):
-            detector_summary[detector_id][method_name] = score_hf_detector_texts(
-                method_outputs,
-                model_id_or_path=detector_id,
-                cache_dir=quick_config.ai_detector_cache_dir,
-                token=quick_config.model.hf_token,
-                max_chars=quick_config.ai_detector_max_chars,
-                device=quick_config.ai_detector_device,
-                batch_size=quick_config.ai_detector_batch_size,
-            )
-
-    for prompt_idx, prompt in enumerate(prompts, start=1):
-        print(f"\nPrompt {prompt_idx}/{len(prompts)}: {prompt}")
-        for method_name in methods:
-            text = outputs_by_method.get(method_name, [])[prompt_idx - 1]
-            if print_generated_text:
-                print(f"\n{method_name}:\n{text}")
-            else:
-                print(f"\n{method_name}: complete")
-            for detector_id in detector_ids:
-                score = detector_summary[detector_id][method_name][prompt_idx - 1]
-                print(f"Detector {detector_id} AI-probability: {score:.3f}")
-
-    print("\nDetector Summary (higher = more AI-like):")
-    for detector_id, scores_by_method in detector_summary.items():
-        print(f"\n{detector_id}:")
-        for method_name in methods:
-            scores = scores_by_method.get(method_name, [])
-            if scores:
-                print(f"{method_name}: mean={sum(scores) / len(scores):.3f}, n={len(scores)}")
-
-    return {"outputs_by_method": outputs_by_method, "detector_summary": detector_summary}
-
-
-# --- Stage 4 (orchestrator): Full pipeline ---
-# Runs all four stages in sequence and optionally evaluates human domain shift
-# (testing detectors on out-of-distribution human text to measure robustness).
 def run_full_generative_detection_pipeline(
     *,
     config: GenerativeDetectionConfig,

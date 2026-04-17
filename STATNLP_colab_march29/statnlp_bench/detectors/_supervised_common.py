@@ -1,7 +1,7 @@
-# Shared constants and helpers used by both the supervised training module
-# (statnlp_bench.training.train_supervised) and the inference-time scoring
-# in supervised.py. Kept separate to avoid circular imports.
-
+'''
+ Shared constants and helpers used by both the supervised training module
+ (statnlp_bench.training.train_supervised) and the inference-time scoring in supervised.py
+'''
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,10 +9,10 @@ from typing import Any
 
 import numpy as np
 
-LABEL_MAP = {0: "human", 1: "ai"}  # canonical label encoding for all supervised detectors
+LABEL_MAP = {0: "human", 1: "ai"} 
 
 
-# Replace NaN/Inf scores with a neutral fallback to avoid downstream crashes.
+# Clean NaN/Inf scores
 def sanitize_scores(scores: list[float], fallback: float = 0.5) -> list[float]:
     return [float(s) if np.isfinite(s) else fallback for s in scores]
 
